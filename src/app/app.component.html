@@ -1,1 +1,780 @@
-<p>hello</p>
+KAIGO APP LOGIN PAGE
+-------------------------
+
+<div class="auth-wrapper auth-v1" fxLayout="column">
+    <div class="auth-inner">
+        <div class="card-body">
+          <a href="javascript:void(0);" class="brand-logo">
+            <!-- <h2 class="brand-text text-primary">もん助</h2> -->
+            <img src='assets/icons/kaigo-logo.svg' />
+          </a>
+        <!--   
+          <h4 class="card-title mb-1">Welcome to KAIGO! 👋</h4>
+          <p class="card-text mb-2">Please sign-in to your account and start the adventure</p> -->
+          <h2 class="login-tittle">{{"login"| translate}}</h2>
+          <form class="auth-login-form mt-2" [formGroup]="loginForm">
+            <div class="form-group">
+              <label for="login-email" class="form-label">{{"email"|translate}}</label>
+              <input
+                type="text"
+                formControlName="email"
+                class="form-control"
+                aria-describedby="login-email"
+                tabindex="1"
+                autofocus
+                [ngClass]="{ 'is-invalid': submitted && f.email.errors }"
+              />
+              <!-- <input type="text" formControlName="email" class="form-control" [ngClass]="{ 'is-invalid': submitted && f.email.errors }"> -->
+              <div *ngIf="submitted && f.email.errors" class="form-validation-style">
+                <!-- <div *ngIf="f.email.errors.email">{{"valid_email_warning"|translate}}</div> -->
+                <div *ngIf="f.email.hasError('atTheRateValidation')">{{"email_@_absent"|translate}}</div>
+                <div *ngIf="f.email.errors.email">{{"valid_email_warning"|translate}}</div>
+                <div *ngIf="f.email.errors.required">{{"enter_email_warning"|translate}}</div>
+              </div>
+            </div>
+  
+            <div class="form-group">
+              <div class="d-flex justify-content-between">
+                <label for="login-password" class="form-label">{{"password"|translate}}</label>
+                <a routerLink="/auth/forgot-password" style="color: rgba(48, 48, 48, 0.45);font-weight: 400;
+                font-size: 12px;">
+                  <small>{{"forgot_password"|translate}}</small>
+                </a>
+              </div>
+              <div class="input-group input-group-merge form-password-toggle">
+                <input
+                  [type]="passwordTextType ? 'text' : 'password'"
+                  formControlName="password"
+                  class="form-control form-control-merge"
+                  tabindex="2"
+                  aria-describedby="login-password"
+                  [ngClass]="{ 'is-invalid error': submitted && f.password.errors }"
+                />
+  
+                <div class="input-group-append" >
+                  <span class="input-group-text cursor-pointer" 
+                    >
+                    <img src="/assets/icons/eye-icon.svg" *ngIf="!passwordTextType" (click)="togglePasswordTextType()" alt="">
+                    <img src="/assets/icons/eye-icon-close.svg" *ngIf="passwordTextType" (click)="togglePasswordTextType()" alt="">
+                    <!-- <i
+                      class="feather font-small-4"
+                      [ngClass]="{
+                        'icon-eye-off': passwordTextType,
+                        'icon-eye': !passwordTextType
+                      }"
+                      (click)="togglePasswordTextType()"
+                    ></i
+                   > -->
+                </span>
+                </div>
+              </div>
+              <div
+                *ngIf="submitted && f.password.errors"
+                class="form-validation-style"
+                [ngClass]="{ 'd-block': submitted && f.password.errors }"
+              >
+                <div *ngIf="f.password.errors.required">{{"enter_password_warning"|translate}}</div>
+              </div>
+            </div>
+            <div class="form-group">
+              <div class="custom-control custom-checkbox">
+                <input class="custom-control-input" type="checkbox" id="remember-me" tabindex="3" />
+                <label class="custom-control-label" for="remember-me">{{"remember_me"|translate}}</label>
+              </div>
+            </div>
+            <!-- <button class="btn-black" tabindex="4" rippleEffect (click)="onSubmit(loginForm.value)" >{{"login" | translate}}</button> -->
+            <button class="btn-black" tabindex="4" rippleEffect (click)="onSubmit(loginForm.value)" >
+              <span *ngIf="!buttonLoader">{{"login"|translate}}</span>
+              <div *ngIf="buttonLoader" class="spinner-border spinner-border-sm  text-light" role="status">
+                 <span class="sr-only">Loading...</span>
+              </div>
+            </button>
+           
+          </form>
+  
+          <!-- <p class="text-center mt-2">
+            <span>New on our platform?</span>
+            <a routerLink="/pages/authentication/register-v1">
+              <span>&nbsp;Create an account</span>
+            </a>
+          </p> -->
+        </div>
+      
+    </div>
+  <h4 style="text-align: center;padding-top: 20px;">R１ ものづくり補助金</h4>
+
+  </div>
+////////////////////////////////////////////////////
+
+import { Component, OnInit } from '@angular/core';
+import { CoreConfigService } from '@core/services/config.service';
+import { FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { AuthenticationService } from 'app/auth/service';
+import { FirebaseAuthenticationService } from 'app/auth/service/firebase-authentication.service';
+import { takeUntil,first } from 'rxjs/operators';
+import { Subject } from 'rxjs';
+import { Router } from '@angular/router';
+import { GeneralService } from 'app/auth/service';
+import { AngularFireAuth } from '@angular/fire/compat/auth';
+import { ToastrService } from 'ngx-toastr';
+import { EmailCustomValidator } from '../../../shared/validators/email-validators'
+@Component({
+  selector: 'app-login',
+  templateUrl: './login.component.html',
+  styleUrls: ['./login.component.scss']
+})
+export class LoginComponent implements OnInit {
+  lang
+  public loginForm: FormGroup;
+  public submitted = false;
+  public passwordTextType: boolean;
+  public error = '';
+  public loading = false;
+  private _unsubscribeAll: Subject<any>;
+  buttonLoader:boolean = false;
+
+  constructor(
+    private _coreConfigService:CoreConfigService,
+    private _formBuilder: FormBuilder,
+    private _authenticationService: AuthenticationService,
+    private generalService:GeneralService,
+    public afAuth: AngularFireAuth,
+    public toaster:ToastrService
+  ) { 
+    this._unsubscribeAll = new Subject();
+    // Configure the layout
+    this._coreConfigService.config = {
+      layout: {
+        navbar: {
+          hidden: true
+        },
+        menu: {
+          hidden: true
+        },
+        footer: {
+          hidden: true
+        },
+        customizer: false,
+        enableLocalStorage: false
+      }
+    };
+
+    this.loginForm = this._formBuilder.group({
+      email: [null, [Validators.required,EmailCustomValidator]],
+      password: [null, Validators.required]
+    });
+  }
+
+get f() {
+  return this.loginForm.controls;
+}
+
+ngOnInit(): void {
+  this.generalService.currentLanguage.subscribe(lang => this.lang = lang);
+}
+
+togglePasswordTextType() {
+  this.passwordTextType = !this.passwordTextType;
+}
+
+onSubmit(data) {
+  this.submitted = true;
+
+  // stop here if form is invalid
+  if (this.loginForm.invalid) {
+    return;
+  }
+
+  // Login
+  this.buttonLoader = true;
+  this.loading = true;
+  this.afAuth
+  .signInWithEmailAndPassword(this.f.email.value,this.f.password.value)
+  .then((result) => {
+    if(result?.user?.multiFactor['user']){
+      this._authenticationService.setTokenExpiryTime()
+      this.generalService.setToken = result?.user?.multiFactor['user']?.accessToken
+      this.generalService.setRefreshToken = result?.user?.multiFactor['user']?.stsTokenManager?.refreshToken
+      this.generalService.setuid = result?.user?.multiFactor['user']?.uid;
+      this._authenticationService.getProfileData(true)
+      // this.toaster.success("")
+    }
+    else{ 
+      this.loading = false; 
+      this.buttonLoader = false;
+      this.toaster.error("login failed")
+      // console.log("login faild")
+    }
+  })
+  .catch((error) => {
+    this.loading = false;
+    this.buttonLoader = false;
+    this.toaster.error(error.code)
+    console.log("error response",error)
+  });
+}
+
+ngOnDestroy(): void {
+  this._unsubscribeAll.next();
+  this._unsubscribeAll.complete();
+}
+}
+
+///////////////////////////////////////////////////////////////
+
+EMAIL VALIDATOR
+---------------------
+import { AbstractControl, ValidationErrors } from '@angular/forms';
+
+export const EmailCustomValidator =  (control: AbstractControl): ValidationErrors | null => {
+  const value = control.value || undefined;
+  if (!value) {
+    return null;
+  }
+
+  const atTheRateSymbol = /@/g;
+//   const lowerCaseCharacters = /[a-z]+/g;
+//   const upperCaseCharacters = /[A-Z]+/g;
+
+  if (atTheRateSymbol.test(value) === false) {
+    return {
+        atTheRateValidation: 'Email address format does not include @'
+    };
+  }
+};
+
+//////////////////////////////////////////////////////
+
+PASSWORD VALIDATORS
+------------------------
+
+import { AbstractControl, ValidationErrors } from '@angular/forms';
+
+export const PasswordStrengthValidator =  (control: AbstractControl): ValidationErrors | null => {
+  const value = control.value || undefined;
+  if (!value) {
+    return null;
+  }
+
+  const numberCharacters = /[0-9]+/g;
+  const lowerCaseCharacters = /[a-z]+/g;
+  const upperCaseCharacters = /[A-Z]+/g;
+
+  if (numberCharacters.test(value) === false || lowerCaseCharacters.test(value) === false  || upperCaseCharacters.test(value) === false) {
+    return {
+      passwordStrength: 'Password must contain a number and upper case and lower case'
+    };
+  }
+};
+
+////////////////////////////////////////////
+
+src/app/shared/guard/auth.guard.ts
+-----------------------------------
+AUTH GUARD
+
+import { Injectable } from '@angular/core';
+import { ActivatedRoute, ActivatedRouteSnapshot, CanActivate, Router, RouterStateSnapshot, UrlTree } from '@angular/router';
+import { GeneralService } from 'app/auth/service/general.service';
+import { Observable } from 'rxjs';
+
+@Injectable({
+  providedIn: 'root'
+})
+export class AuthGuard implements CanActivate {
+  constructor(
+    private router: Router,
+    private route: ActivatedRoute,
+    private general: GeneralService
+  ) {}
+  
+  canActivate(
+    route: ActivatedRouteSnapshot,
+    state: RouterStateSnapshot): Observable<boolean | UrlTree> | Promise<boolean | UrlTree> | boolean | UrlTree {
+      let token = this.general.getToken;
+      if (token) {
+        return true;
+      } else {
+        this.router.navigate(['/']);
+        return false;
+      }
+  }
+}
+
+////////////////////////////////////////////////////
+GENERAL INTERFACE
+------------------------
+import {careTypes,JobStatus,AnnouncementViewer} from './enum'
+
+export interface IOrganization {
+    _id?:string,
+    companyName?:string,
+    phone?:string,
+    prefecture?:IPrefecture | string,
+    city?:ICityList | string,
+    address?:string,
+    buildingName?:string,
+    cordinate?:{lat:number,lng:number},
+    locationName?:string,
+    lat?:number,
+    lng?:number,
+    created?:Date,
+    updated?:Date
+}
+export interface ICityList {
+    _id?:string,
+    city_id?:string,
+    city_en: string,
+    city_jp: string,
+    active?:boolean
+}
+export interface IPrefecture {
+    _id?:string,
+    prefecture_en?: string,
+    prefecture_jp?: string,
+    prefecture_id?: string,
+    active?:boolean,
+    cityList?: ICityList[] | string[],
+    city_id?:string
+}
+
+export interface IUserInfo {
+    _id?: string,
+    name?: string,
+    email?: string,
+    phone?: string,
+    created?: string,
+    updated?: string,
+    disabled?:boolean,
+    careType?:careTypes,
+    photoList?:IAttachment[],
+    companyDetail?:ICompanyDetail
+    registered?:boolean,
+    role?:string,
+    organization?:string | IOrganization,
+    is_fulltimeJob_paid?:boolean
+}
+export interface ICompanyDetail{
+    officeName?:string,
+    address?:string,
+    businessPhoneNumber?:string,
+    prefecture?:IPrefecture
+    city?:ICityList,
+    cordinate?:object,
+    business_day?:string,
+    business_hours?:string,
+    how_to_access?:string,
+    office_outline?:string
+}
+export interface IAttachment {
+    _id?:string,
+    name?:string,
+    url:string,
+    uploadOn?:Date,
+    key?:string
+}
+export interface IFullTimeJob{
+    job_title?: string,
+    createdBy? : string,
+    careType?:string[],
+    buisiness_thoughts?:string,
+    job_description?:string,
+    job_service_salary?:JobServiceSalary[]
+    job_type?:string,
+    photoList?:IAttachment[],
+    qualifications?:string[] ,
+    treatment?:string[],
+    status?:JobStatus,
+    prefecture?:string,
+    city?:string,
+    created?:Date,
+    free_treatment_input?:string,
+    free_application_input?:string,
+    other_allowances?:string,
+    work_hours?:string,
+    holiday?:string,
+    welcome_requirements?:string,
+    selection_process?:string,
+    address?:string,
+    officeName?:string,
+    companyName?:string,  //operating corparate name
+    public?:boolean,
+    withdraw_job?:boolean
+}
+export interface JobServiceSalary{
+    job_type?:string,
+    salary?:number,
+}
+export interface IAnnouncement{
+    _id?:string,
+    viewerType?:AnnouncementViewer,
+    subject?:string,
+    notice?:string,
+    photoList?:IAttachment,
+    createdBy?:string,
+    created?:Date
+}
+
+///////////////////////////////////////////////
+src/app/shared/enum.ts
+--------------------------------
+export enum careTypes {
+    
+}
+export enum AccountStatus{
+  ACTIVATE = 'activate',
+  DEACTIVATE = 'deactivate'
+}
+
+export enum IDocumentType{
+  IDPROOF = 'id_proof',
+  QUALIFICATION = 'qualification'
+}
+
+export enum DateSortOrder{
+  ASCENDING="ascending",
+  DESCENDING="descending"
+}
+
+export enum IDstatus{
+  PENDING = 'pending',
+  APPROVED = 'approved',
+  REJECTED = 'rejected',
+  UPDATED = 'updated'
+}
+
+export enum DocumentType{
+  IDDOCUMENT='identity document',
+  QUALIFICATION='qualification_document'
+}
+export enum JobStatus{
+  UNDER_RECRUITMENT = "under_recruitment",
+  WAITING_FOR_APPROVAL = "waiting_for_approval",
+  APPLICATION_CONFIRMED = "application_confirmed",
+  APPLICATION_REJECTED = "application_rejected",
+  RECRUITMENT_COMPLETED = "recruitment_completed",
+  WAITING_FOR_REVIEW = "waiting_for_review"
+}
+
+export enum JobType{
+  PART_TIME_JOB = "part_time_job",
+  FULL_TIME_JOB = "full_time_job"
+}
+export enum fulltimeJobStatus{
+  // UNDER_RECRUITMENT = 'under_recruitment',
+  // WAITING_FOR_APPROVAL = "waiting_for_approval",
+  APPROVED = 'approved',
+  REJECTED = "rejected"
+}
+export enum absentesStatus{
+  UNAUTHORIZED_ABSENTE = 'unauthorized_absente',
+  UNAPPROVED_ABSENTES = 'unapproved_absente',
+}
+export enum AbsentiesStatus{
+  PENDING="pending",
+  APPROVED = "approved",
+  REJECTED = "rejected"
+}
+export enum WithdrawalType{
+  REGULAR_TRANSFER = "regular_transfer",
+  WITHDRAWAL_TRANSFER = "withdrawal_transfer"
+}
+export enum AnnouncementTab{
+  PROVIDER="provider",
+  WORKER="worker",
+  PROVIDERWORKER="provider-worker"
+}
+export enum AnnouncementViewer{
+  USER = 'USER',
+  CARE_PROVIDER = 'care_provider',
+  ALL = 'all'
+}
+export enum Places{
+  PREFECTURE = "prefecture",
+  CITY = "city"
+}
+
+///////////////////////////////////////
+
+SEARCH AND PAGINATION
+--------------------  
+
+<div class="main-padding">
+  <section id="ngx-datatable-Responsive">
+    <div>
+      <div class="header-container pb-2 pt-2" fxLayout="row wrap" fxLayout.lt-sm="column" fxLayoutAlign="space-between center"
+        fxLayoutGap="20px" fxLayout.lt-sm="column">
+        <h3 class="page-head">{{"list_of_recruitment_interview_result_reports"|translate}}</h3>
+        <input type="text" class="form-control" id="basicInput"
+          placeholder='{{"interview_result_reports_search_keyword"|translate}}' style="width: 240px;height:38px;"
+          [(ngModel)]="searchWord" (keyup)='searchWorker()' />
+      </div>
+      <div style="overflow: auto;overflow-y: hidden ;padding-bottom: 10px;">
+        <div style="min-height: 600px;background-color: #fff;">
+          <div class="d-flex justify-content-center mt-5 mb-5" *ngIf="loading">
+            <div class="spinner-border" role="status">
+              <span class="sr-only">Loading...</span>
+            </div>
+          </div>
+          <table id="example" class="table" style="width:100%;" *ngIf="!loading">
+            <thead>
+              <tr>
+                <th>No.</th>
+                <th>{{"office_name"|translate}}</th>
+                <th>{{"worker_name"|translate}}</th>
+                <th>{{"employment_status"|translate}}</th>
+                <th>{{"open_position"|translate}}</th>
+                <th>{{"the_day_you_start_to_work"|translate}}</th>
+                <th>{{"reporting_date"|translate}}</th>
+                <th>{{"reporting_status"|translate}}</th>
+                <th class="text-center">{{"congratulation_money_status"|translate}}</th>
+              </tr>
+            </thead>
+            <div class="d-flex justify-content-center mt-5 mb-5" *ngIf="tableLoading" style="position:reactivate">
+              <div class="spinner-border" role="status" style="position:absolute;left: 50%;right: 50%;">
+                <span class="sr-only">Loading...</span>
+              </div>
+            </div>
+            <tbody style="background-color: #fff;" *ngIf="!tableLoading">
+              <tr *ngFor="let item of InterviewReportList,let i=index">
+                <td>{{Number(i)}}.</td>
+                <td>
+                  <div>
+                    <h4 class="user-name">{{item?.officeName}}</h4>
+                    <h4 class="email-class">{{item?.careProvider?.email}}</h4>
+                  </div>
+                </td>
+                <td>
+                  <h4 class="user-name">{{item?.applicant_name}}</h4>
+                  <h4 class="email-class" *ngIf="item?.applicant?.phone">{{item?.applicant?.phone|
+                    slice:0:3}}-{{item?.phone | slice:3:7}}-{{item?.phone | slice:7:11}}</h4>
+                </td>
+                <td>
+                  <span *ngIf="item?.employment_status!='part_time'">{{'Regular_employment'|translate}}</span>
+                  <span *ngIf="item?.employment_status=='part_time'">{{'part_time'|translate}}</span>
+                </td>
+                <td>{{item?.occupation}}</td>
+                <td>{{item?.start_date|date:'yyyy/MM/dd'}}</td>
+                <td>
+                  <span>{{item?.created|date:'yyyy/MM/dd'}}</span><br>
+                  <span>{{item?.created|date:'HH:mm'}}</span>
+                </td>
+                <td>
+                  <span class="recruitment-status">ワーカー：
+                    <span *ngIf="item?.careworker_recruitment_status=='hired'" class="approved">採用</span>
+                    <span *ngIf="item?.careworker_recruitment_status=='not_hired'" class="rejected">不採用</span>
+                  </span><br>
+                  <span class="recruitment-status">事業所　：
+                    <span *ngIf="item?.careprovider_recruitment_status=='hired'" class="approved">採用</span>
+                    <span *ngIf="item?.careprovider_recruitment_status=='not_hired'" class="rejected">不採用</span>
+                  </span>
+                <td class="text-center">
+                  <button class="remitted" *ngIf="item?.congratulatory_money_status=='pending'&&(item?.careprovider_recruitment_status=='hired'||item?.careworker_recruitment_status=='hired')"
+                    (click)="openRemiitenceCompletedModal(item?._id)">{{"send_congratulatory_money"|translate}}</button>
+                  <button class="not-remitted" *ngIf="item?.congratulatory_money_status=='pending'&&(item?.careprovider_recruitment_status=='not_hired'||item?.careworker_recruitment_status=='not_hired')"
+                    (click)="openRemiitenceCompletedModal(item?._id)">{{"no_remitted"|translate}}</button>
+                  <div *ngIf="item?.congratulatory_money_status=='remitted'">{{"remitted"|translate}}</div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <div *ngIf="!InterviewReportList?.length&&!loading&&!tableLoading" style="width: 100%;">
+            <h4 class="no-data">{{"no_data"|translate}}</h4>
+          </div>
+        </div>
+        <div fxLayout="row" fxLayoutAlign="space-between center" fxLayoutGap="10px" style="margin-top: 20px;">
+          <div>
+            <h4 class=".pagination-count pagination-count-custom">{{InterviewReportListCount}} 件中
+              {{InterviewReportList?.length}} 件を表示</h4>
+          </div>
+          <div fxLayout="row" fxLayoutAlign="end center" fxLayoutGap="10px" style="margin-top: 20px;">
+            <img src="/assets/icons/Left.svg" alt="" style="cursor: pointer;" (click)="preview('idProof')">
+            <div class="pagination-div" fxLayout="row" fxLayoutGap="10px">
+              <h4 *ngFor="let page of pageCount()" class="paginataion-btn"
+                [ngClass]="{'pagination-btn-selected':page==selectedListPage}" (click)="getIdentityDocList(page)">
+                {{page}}</h4>
+            </div>
+            <img src="/assets/icons/Right.svg" alt="" style="cursor: pointer;" (click)="next('idProof')">
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+////////////////////////////////////////////////////////
+
+import { HttpParams } from '@angular/common/http';
+import { Component, OnInit } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
+import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
+import { ApiService, GeneralService } from 'app/auth/service';
+import { ApiConstant } from 'app/shared/api-constents';
+import { DateSortOrder, DocumentType, IDocumentType,  } from 'app/shared/enum';
+import { ToastrService } from 'ngx-toastr';
+import { Subject } from 'rxjs';
+import { takeUntil } from 'rxjs/operators';
+import { RemittanceModalComponent } from '../remittance-modal/remittance-modal.component';
+
+@Component({
+  selector: 'app-interview-report-list',
+  templateUrl: './interview-report-list.component.html',
+  styleUrls: ['./interview-report-list.component.scss']
+})
+export class InterviewReportListComponent implements OnInit {
+  lang:string;
+  searchWord:string;
+  private unsubscribe = new Subject<void>();
+  loading:boolean=false;
+  InterviewReportList :any[] = [];
+  InterviewReportListCount: any;
+  selectedListPage:number=1
+  selectedPage:number=1
+  totalPagesForInterviewReportList: number;
+ tableLoading:boolean=false
+
+ constructor(
+   public generalService: GeneralService,
+   private apiService: ApiService,
+   private router: Router,
+   private toastrService: ToastrService,
+   private activatedRoute: ActivatedRoute,
+   private modalService: NgbModal,
+ ) { }
+
+ ngOnInit(): void {
+   this.generalService.currentLanguage.subscribe(lang => this.lang = lang);
+   this.loading = true;
+   this.getInterviewResultList(this.selectedPage);
+ }
+
+
+ getInterviewResultList (page) {
+   this.tableLoading=true
+   this.selectedPage=page
+   let query = new HttpParams();
+   query=query.set('page',page)
+   if (this.searchWord && this.searchWord?.trim() != '') {
+     query = query.set('search', this.searchWord?.trim());
+   }
+   this.apiService
+   .ExecuteGet(
+    this.apiService.baseUrl + ApiConstant.fulltimeJobInterviewReport,null,query
+   )
+   .pipe(takeUntil(this.unsubscribe))
+   .subscribe(
+     (response: any) => {
+       console.log("fulltimeJobInterviewReport",response)
+       this.InterviewReportList=response?.result?.data
+       this.InterviewReportListCount=response?.result?.count
+       this.loading = false;
+       this.tableLoading=false
+     },
+     (error) => {
+       console.log(error.error.message);
+       this.loading = false;
+       this.tableLoading=false
+     }
+   );
+ }
+
+ pageCount(){
+   let count = Math.floor(this.InterviewReportListCount / 10)
+   let remainder = this.InterviewReportListCount % 10
+   let pageNo = []
+   if (remainder > 0) {
+     count = count + 1
+   }
+   this.totalPagesForInterviewReportList = count
+   let individualPagelast = this.selectedListPage <= 4 ? count <= 4 ? count : 4 : this.selectedListPage == count ? count : count - 3 <= this.selectedListPage ? count : this.selectedListPage + 2
+   let individualPageFirst = individualPagelast <= 4 ? 1 : individualPagelast - 3
+   for (let i = individualPageFirst; i <= individualPagelast; i++) {
+     pageNo.push(i)
+   }
+   if (!count) {
+     // this.changeDetector.detectChanges()
+   }
+   return pageNo
+ }
+
+
+
+ preview(type){
+     if (this.selectedListPage >1) {
+       this.selectedListPage--
+       this.tableLoading=true
+       this.getInterviewResultList(this.selectedListPage)
+     }
+ }
+
+ next(type){
+     if (this.selectedListPage < this.totalPagesForInterviewReportList) {
+       this.selectedListPage++
+       this.tableLoading=true
+       this.getInterviewResultList(this.selectedListPage)
+     }
+ }
+ 
+ Number(i){
+  let no
+  if(this.selectedPage>1){
+   no=(10*(this.selectedPage-1))+i+1
+   return no
+  }
+  else{
+    return (i+1)<10?"0"+(i+1):i+1
+  }
+}
+
+ searchWorker() {
+  this.tableLoading=true
+   this.getInterviewResultList(this.selectedPage)
+ }
+
+
+ openRemiitenceCompletedModal(id){
+  const modalRef = this.modalService.open(RemittanceModalComponent,
+    {
+      centered: true
+    });
+    modalRef.result.then((result) => {
+      console.log("result",result)
+      if(result==null){
+        return
+      }
+      else{
+        if(result===true){
+          var value={
+            _id:id,
+            status:'remitted'
+            } 
+        }
+        if(result===false){
+          var value={
+            _id:id,
+            status:'not_remitted'
+            } 
+        }
+          console.log("value",value)
+          this.apiService.ExecutePost(this.apiService.baseUrl+ApiConstant.remittence,value)
+          .pipe(takeUntil(this.unsubscribe))
+          .subscribe((response:any)=>{
+            console.log("response",response)
+            this.toastrService.success("お祝い金ステータスを”送金済み”に変更しました")
+            this.tableLoading=true
+            this.getInterviewResultList(this.selectedPage);
+          },(error)=>{
+            this.toastrService.error("お祝い金ステータスの変更に失敗しました")
+            this.tableLoading=true
+            this.getInterviewResultList(this.selectedPage);
+            console.log(error.error.message)
+          })
+      }
+    })
+}
+
+ ngOnDestroy(): void {
+   this.unsubscribe.next();
+   this.unsubscribe.complete();
+ }
+}
